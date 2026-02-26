@@ -1,0 +1,36 @@
+# Render.com Configuration
+# This file tells Render how to deploy your app
+
+services:
+  # Main Web Service
+  - type: web
+    name: receiptagent
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: GROQ_API_KEY
+        sync: false  # You'll set this manually
+      - key: DATABASE_URL
+        fromDatabase:
+          name: receiptagent-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: receiptagent-redis
+          property: connectionString
+
+  # Redis for Celery
+  - type: redis
+    name: receiptagent-redis
+    ipAllowList: []  # Only internal access
+    plan: free
+
+# PostgreSQL Database
+databases:
+  - name: receiptagent-db
+    plan: free

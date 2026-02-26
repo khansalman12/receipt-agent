@@ -1,0 +1,194 @@
+# =============================================================================
+# DOCKER COMPOSE CONFIGURATION
+# =============================================================================
+# 
+# 🧠 WHAT IS DOCKER COMPOSE?
+# ==========================
+# Docker Compose runs multiple containers together as a "stack".
+# Each service (web, db, redis, celery) runs in its own container.
+#
+# CONNECTION TO YOUR LEARNING:
+# ----------------------------
+# Remember how in your RAG tutorials you had multiple components?
+#   - Vector DB (Chroma)
+#   - LLM API (OpenAI/Groq)
+#   - Your Python code
+#
+# Docker Compose is how you run all those in production!
+#
+# VISUAL:
+#     ┌─────────────────────────────────────────────────────┐
+#     │                 DOCKER COMPOSE STACK                │
+#     │  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────┐ │
+#     │  │   web   │  │   db    │  │  redis  │  │ celery │ │
+#     │  │ Django  │  │ Postgres│  │  Queue  │  │ Worker │ │
+#     │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬───┘ │
+#     │       │            │            │            │      │
+#     │       └────────────┴────────────┴────────────┘      │
+#     │                 Internal Docker Network             │
+#     └─────────────────────────────────────────────────────┘
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # WEB SERVICE - Django Application
+  # ===========================================================================
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+      # ↑ Mount current directory to /app in container
+      #   Changes to code are reflected immediately (hot reload)
+    ports:
+      - "8000:8000"
+      # ↑ Map container port 8000 to host port 8000
+      #   Access via http://localhost:8000
+    env_file:
+      - .env
+      # ↑ Load environment variables from .env file
+      #   Contains: GROQ_API_KEY, DATABASE_URL, etc.
+    depends_on:
+      - db
+      - redis
+      # ↑ Start db and redis BEFORE starting web
+      #   Ensures database is ready when Django starts
+
+  # ===========================================================================
+  # DATABASE SERVICE - PostgreSQL
+  # ===========================================================================
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # ↑ Named volume for data persistence
+      #   Data survives container restarts
+    environment:
+      - POSTGRES_DB=expenseai
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      # ↑ Database credentials
+      #   In production, use secrets management!
+
+  # ===========================================================================
+  # REDIS SERVICE - Message Broker for Celery
+  # ===========================================================================
+  # 
+  # 🧠 REDIS IN THE AI PIPELINE:
+  # ============================
+  # Redis is the "message queue" between Django and Celery workers.
+  #
+  # Flow:
+  #   1. Django view calls: process_receipt_task.delay(receipt_id)
+  #   2. Task is serialized to JSON and PUSHED to Redis queue
+  #   3. Celery worker POPS task from Redis queue
+  #   4. Worker runs the LangGraph pipeline
+  #   5. Results stored in Redis (and database)
+  #
+  # CONNECTION TO YOUR LEARNING:
+  # ----------------------------
+  # Remember async patterns? Redis is like a "shared memory" between processes.
+  # It's similar to how you passed data between chain steps in LangChain!
+  # ===========================================================================
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  # ===========================================================================
+  # CELERY WORKER - Background Task Processing
+  # ===========================================================================
+  #
+  # 🧠 THIS IS WHERE YOUR AI PIPELINE RUNS!
+  # ========================================
+  # The Celery worker picks up tasks from Redis and executes them.
+  # Each task runs the LangGraph pipeline you built in graph.py:
+  #   load_image → extract_data → validate → fraud_check → finalize
+  #
+  # CONNECTION TO LANGGRAPH:
+  # ------------------------
+  # Worker executes: from api.ai.graph import process_receipt
+  #                  result = process_receipt(receipt_id, image_path, report_id)
+  #
+  # The result contains: extracted_data, fraud_score, audit_notes, etc.
+  # ===========================================================================
+  celery_worker:
+    build: .
+    command: celery -A config worker --loglevel=info
+    # ↑ COMMAND EXPLAINED:
+    #   celery -A config → Use Celery app from config/celery.py
+    #   worker → Run as a worker (process tasks)
+    #   --loglevel=info → Show info-level logs
+    #
+    #   Other options:
+    #   --concurrency=2 → Run 2 parallel workers (for multi-GPU)
+    #   -Q default,high → Process specific queues
+    volumes:
+      - .:/app
+      # ↑ Same code as web service
+    env_file:
+      - .env
+      # ↑ Needs GROQ_API_KEY for LLM calls!
+    depends_on:
+      - db
+      - redis
+      # ↑ Wait for database and Redis to be ready
+
+  # ===========================================================================
+  # CELERY BEAT - Periodic Task Scheduler (Optional)
+  # ===========================================================================
+  # 
+  # Uncomment this if you want scheduled tasks like:
+  #   - Daily fraud re-scanning
+  #   - Weekly report summaries
+  #   - Cleanup of old data
+  #
+  # celery_beat:
+  #   build: .
+  #   command: celery -A config beat --loglevel=info
+  #   volumes:
+  #     - .:/app
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     - db
+  #     - redis
+
+# =============================================================================
+# VOLUMES - Persistent Data Storage
+# =============================================================================
+volumes:
+  postgres_data:
+    # ↑ Named volume for PostgreSQL data
+    #   Data persists even if you run: docker-compose down
+    #   To delete: docker-compose down -v
+
+# =============================================================================
+# HOW TO USE THIS
+# =============================================================================
+#
+# 1. START ALL SERVICES:
+#        docker-compose up -d
+#    
+#    -d flag = "detached" mode (runs in background)
+#
+# 2. VIEW LOGS:
+#        docker-compose logs -f          # All services
+#        docker-compose logs -f web      # Just Django
+#        docker-compose logs -f celery_worker  # Just Celery
+#
+# 3. RUN DJANGO COMMANDS:
+#        docker-compose exec web python manage.py migrate
+#        docker-compose exec web python manage.py createsuperuser
+#        docker-compose exec web python manage.py shell
+#
+# 4. STOP SERVICES:
+#        docker-compose down       # Stop and remove containers
+#        docker-compose down -v    # Also remove volumes (data!)
+#
+# 5. REBUILD AFTER CODE CHANGES:
+#        docker-compose up --build
+#
+# =============================================================================
