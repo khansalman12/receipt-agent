@@ -1,0 +1,15 @@
+Django>=5.0
+djangorestframework>=3.14
+psycopg2-binary>=2.9
+redis>=5.0
+celery>=5.3
+opencv-python-headless>=4.9
+numpy>=1.26
+pillow>=10.2
+langchain>=0.1
+langgraph>=0.0.10
+langchain-groq>=0.0.1
+python-dotenv>=1.0
+requests>=2.31
+gunicorn>=21.2
+dj-database-url>=2.1
