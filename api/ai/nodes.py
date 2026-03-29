@@ -2,6 +2,7 @@
 
 import base64
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
@@ -14,6 +15,8 @@ from dotenv import load_dotenv
 from .state import ReceiptProcessingState, ExtractedReceiptData, FraudAnalysis
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 def get_llm(model: str = "llama-3.3-70b-versatile", temperature: float = 0.1):
@@ -34,7 +37,7 @@ def encode_image_to_base64(image_path: str) -> str:
 # Node 1: Load Image
 def load_image_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Load and encode the receipt image."""
-    print(f"Loading image for receipt: {state['receipt_id']}")
+    logger.info("Loading image for receipt: %s", state['receipt_id'])
     
     try:
         image_path = state["image_path"]
@@ -86,7 +89,7 @@ Return JSON only:
 # Node 2: Extract Data
 def extract_data_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Use LLM vision to extract structured data from receipt image."""
-    print(f"Extracting data from receipt: {state['receipt_id']}")
+    logger.info("Extracting data from receipt: %s", state['receipt_id'])
 
     if not state.get("image_base64"):
         return {
@@ -153,7 +156,7 @@ def extract_data_node(state: ReceiptProcessingState) -> Dict[str, Any]:
 # Node 3: Validate Data
 def validate_data_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Validate the extracted data for consistency."""
-    print(f"Validating data for: {state['receipt_id']}")
+    logger.info("Validating data for: %s", state['receipt_id'])
     
     extracted = state.get("extracted_data")
     
@@ -224,7 +227,7 @@ Return JSON:
 # Node 4: Fraud Check
 def fraud_check_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Analyze receipt for fraud patterns."""
-    print(f"Running fraud detection for: {state['receipt_id']}")
+    logger.info("Running fraud detection for: %s", state['receipt_id'])
     
     extracted = state.get("extracted_data")
     
@@ -295,7 +298,7 @@ def fraud_check_node(state: ReceiptProcessingState) -> Dict[str, Any]:
 # Node 5: Finalize
 def finalize_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Wrap up processing and record completion."""
-    print(f"Finalizing receipt: {state['receipt_id']}")
+    logger.info("Finalizing receipt: %s", state['receipt_id'])
     
     started = state.get("processing_started_at")
     elapsed_ms = None
@@ -324,7 +327,7 @@ def finalize_node(state: ReceiptProcessingState) -> Dict[str, Any]:
 # Node 6: Error Handler
 def error_handler_node(state: ReceiptProcessingState) -> Dict[str, Any]:
     """Handle processing errors."""
-    print(f"Error handling for receipt: {state['receipt_id']}")
+    logger.error("Error handling for receipt: %s", state['receipt_id'])
     
     error = state.get("error_message", "Unknown error")
     
