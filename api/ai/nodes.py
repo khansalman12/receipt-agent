@@ -85,44 +85,63 @@ Return JSON only:
 
 # Node 2: Extract Data
 def extract_data_node(state: ReceiptProcessingState) -> Dict[str, Any]:
-    """Use LLM to extract structured data from receipt."""
+    """Use LLM vision to extract structured data from receipt image."""
     print(f"Extracting data from receipt: {state['receipt_id']}")
-    
+
     if not state.get("image_base64"):
         return {
             "processing_status": "failed",
             "error_message": "No image data available for extraction",
             "audit_notes": ["ERROR: Missing image data"]
         }
-    
+
     try:
-        # Mock extraction (replace with vision model in production)
-        mock_extracted_data: ExtractedReceiptData = {
-            "merchant_name": "Sample Coffee Shop",
-            "merchant_address": "123 Main Street, City",
-            "transaction_date": datetime.now().strftime("%Y-%m-%d"),
-            "transaction_time": datetime.now().strftime("%H:%M"),
-            "items": [
-                {"name": "Latte", "quantity": 1, "unit_price": 4.50, "total_price": 4.50},
-                {"name": "Muffin", "quantity": 2, "unit_price": 3.00, "total_price": 6.00},
-            ],
-            "subtotal": 10.50,
-            "tax_amount": 0.84,
-            "total_amount": 11.34,
-            "payment_method": "VISA ****1234",
-            "currency": "USD",
-            "confidence_score": 0.92
-        }
-        
+        llm = get_llm(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0.0)
+
+        messages = [
+            SystemMessage(content="You are an expert receipt parser. Return only valid JSON, no markdown, no extra text."),
+            HumanMessage(content=[
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{state['image_base64']}"
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": EXTRACTION_PROMPT
+                }
+            ])
+        ]
+
+        response = llm.invoke(messages)
+
+        # Clean response and parse JSON
+        content = response.content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        content = content.strip()
+
+        extracted_data: ExtractedReceiptData = json.loads(content)
+
         return {
-            "extracted_data": mock_extracted_data,
+            "extracted_data": extracted_data,
             "processing_status": "validating",
             "audit_notes": [
-                f"Extraction complete: {mock_extracted_data['merchant_name']}",
-                f"Total: {mock_extracted_data['currency']} {mock_extracted_data['total_amount']}",
+                f"Extraction complete: {extracted_data.get('merchant_name', 'Unknown')}",
+                f"Total: {extracted_data.get('currency', 'USD')} {extracted_data.get('total_amount', 0)}",
+                f"Confidence: {extracted_data.get('confidence_score', 0):.0%}",
             ]
         }
-        
+
+    except json.JSONDecodeError as e:
+        return {
+            "processing_status": "failed",
+            "error_message": f"Could not parse AI response as JSON: {str(e)}",
+            "audit_notes": [f"ERROR: JSON parse failed — {str(e)}"]
+        }
     except Exception as e:
         return {
             "processing_status": "failed",
