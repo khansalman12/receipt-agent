@@ -6,9 +6,10 @@
 [![Django](https://img.shields.io/badge/Django-5.0-green.svg)](https://djangoproject.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Latest-orange.svg)](https://langchain-ai.github.io/langgraph/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://docker.com)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/khansalman12/receiptagent)
 
---- 
+![ReceiptAgent Demo](docs/demo.gif)
+
+---
 
 ## What It Does
 
@@ -37,39 +38,41 @@ Client --> Django REST API --> PostgreSQL
 
 ---
 
-## Quick Start
+## Quick Start (2 commands)
 
 ### Prerequisites
 - Docker & Docker Compose
-- Groq API key ([free at console.groq.com](https://console.groq.com))
-
-### Run Locally
+- Free Groq API key from [console.groq.com](https://console.groq.com)
 
 ```bash
-git clone https://github.com/khansalman12/receiptagent.git
-cd receiptagent
+git clone https://github.com/khansalman12/receipt-agent.git
+cd receipt-agent
 
-cp .env.example .env
 # Add your GROQ_API_KEY to .env
+cp .env.example .env && open .env
 
-docker-compose up -d
-docker-compose exec web python manage.py migrate
-
-# Test
-curl http://localhost:8000/api/health/
+# Start everything (auto-migrates, no extra steps)
+docker-compose up
 ```
 
----
+API is live at `http://localhost:8000`
 
-## Deploy Free on Render.com
+### Test it
 
-1. Fork/push this repo to your GitHub
-2. Go to [render.com](https://render.com) -> New -> Blueprint
-3. Connect the repo (Render reads `render.yaml` automatically)
-4. Set `GROQ_API_KEY` in the Environment tab
-5. Wait ~5 min, your app is live at `https://receiptagent.onrender.com`
+```bash
+# Health check
+curl http://localhost:8000/api/health/
 
-> Free tier: app sleeps after 15 min inactivity, 750 hrs/month, 1GB Postgres, 25MB Redis
+# Create an expense report
+curl -X POST http://localhost:8000/api/reports/ \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Business Trip", "description": "April expenses"}'
+
+# Upload a receipt image
+curl -X POST http://localhost:8000/api/receipts/ \
+  -F "image=@/path/to/receipt.jpg" \
+  -F "report=1"
+```
 
 ---
 
