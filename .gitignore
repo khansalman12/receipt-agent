@@ -31,3 +31,4 @@ staticfiles/
 # Secrets
 *.pem
 *.key
+TRANSFORMER_LESSON_1_TOKENIZATION_EMBEDDINGS.py
