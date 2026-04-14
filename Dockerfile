@@ -22,10 +22,8 @@ COPY . .
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Collect static files
-RUN python manage.py collectstatic --no-input 2>/dev/null || true
-
 EXPOSE 8000
 
-# Production server
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+# Start script: runs migrations + starts gunicorn
+RUN chmod +x start.sh
+CMD ["./start.sh"]
