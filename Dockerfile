@@ -22,5 +22,10 @@ COPY . .
 # Environment variables
 ENV PYTHONUNBUFFERED=1
 
-# Default command (overridden in docker-compose)
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+# Collect static files
+RUN python manage.py collectstatic --no-input 2>/dev/null || true
+
+EXPOSE 8000
+
+# Production server
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]

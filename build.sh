@@ -1,6 +1,4 @@
-# Render.com Build Script
 #!/usr/bin/env bash
-
 set -o errexit
 
 # Install dependencies
