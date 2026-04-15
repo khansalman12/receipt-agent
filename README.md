@@ -232,12 +232,6 @@ receipt-agent/
 
 ---
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
-
----
-
 ## License
 
 MIT -- do whatever you want with it.
