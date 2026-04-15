@@ -2,6 +2,7 @@
 
 **AI-Powered Receipt Processing & Expense Management**
 
+[![CI](https://github.com/khansalman12/receipt-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/khansalman12/receipt-agent/actions)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![Django](https://img.shields.io/badge/Django-5.0-green.svg)](https://djangoproject.com)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Latest-orange.svg)](https://langchain-ai.github.io/langgraph/)
@@ -42,17 +43,49 @@ All saved to PostgreSQL automatically.
 
 ---
 
+## Architecture
+
+```
+                         +-------------+
+  Upload receipt image   |   Django    |   POST /api/receipts/
+  ---------------------->|   REST API  |----------------------.
+                         +------+------+                      |
+                                |                             v
+                                |                     +-------+--------+
+                                |  Celery task        |  Redis Broker  |
+                                +-------------------->|                |
+                                                      +-------+--------+
+                                                              |
+                                                              v
+                                                   +----------+----------+
+                                                   |  LangGraph Pipeline |
+                                                   |                     |
+                                                   |  load_image         |
+                                                   |    -> extract_data  |  Llama 4 Scout (vision)
+                                                   |    -> validate      |
+                                                   |    -> fraud_check   |  Llama 3.3 70B
+                                                   |    -> finalize      |
+                                                   +----------+----------+
+                                                              |
+                                                              v
+                                                      +-------+------+
+                                                      |  PostgreSQL  |
+                                                      +--------------+
+```
+
+---
+
 ## How it works
 
-Upload a receipt → the system runs it through an AI pipeline:
+Upload a receipt -> the system runs it through an AI pipeline:
 
-1. **Load Image** — reads and encodes the receipt photo
-2. **Extract Data** — Llama 4 vision model reads the image and returns structured JSON with merchant, items, totals
-3. **Validate** — checks amounts add up, date is valid, required fields exist
-4. **Fraud Check** — Llama 3 scores the receipt for suspicious patterns
-5. **Save** — everything stored in PostgreSQL, report total updated
+1. **Load Image** -- reads and encodes the receipt photo
+2. **Extract Data** -- Llama 4 vision model reads the image and returns structured JSON with merchant, items, totals
+3. **Validate** -- checks amounts add up, date is valid, required fields exist
+4. **Fraud Check** -- Llama 3 scores the receipt for suspicious patterns (round numbers, unusual merchants, missing info)
+5. **Save** -- everything stored in PostgreSQL, report total updated
 
-All processing runs in the background via Celery so the API responds instantly.
+Routing is conditional: if validation has too many errors, the receipt goes to manual review. If the fraud score hits 70+, it gets flagged automatically. All processing runs in the background via Celery so the API responds instantly.
 
 ---
 
@@ -67,11 +100,57 @@ cd receipt-agent
 # Add your free Groq API key (get one at console.groq.com)
 cp .env.example .env
 
-# Start everything — migrations run automatically
+# Start everything -- migrations run automatically
 docker-compose up
 ```
 
-Hit `http://localhost:8000/api/health/` — if you get `{"status": "ok"}` you're good.
+Hit `http://localhost:8000/api/health/` -- if you get `{"status": "ok"}` you're good.
+
+---
+
+## Testing
+
+The test suite covers models, API endpoints, serializer validation, pipeline routing, Celery tasks, edge cases, and the CLI. Tests never call real LLMs -- all AI calls are mocked.
+
+```bash
+# Run full suite
+pytest api/tests/ -v
+
+# Run with coverage
+pytest api/tests/ --cov=api --cov-report=term-missing
+
+# Run a specific file
+pytest api/tests/test_tasks.py -v
+```
+
+Test files:
+| File | What it covers |
+|------|----------------|
+| `test_models.py` | Field defaults, UUID PKs, relationships, cascade delete |
+| `test_views.py` | CRUD endpoints, status transitions, filtering, 404s |
+| `test_serializers.py` | Image validation (size, type), read-only enforcement |
+| `test_pipeline.py` | Graph routing logic, validation rules, boundary scores |
+| `test_tasks.py` | Celery task lifecycle, mocked LLM, report flagging |
+| `test_edge_cases.py` | Double approvals, empty DBs, invalid uploads, GIF rejection |
+| `test_management.py` | CLI command output, filters, empty DB handling |
+| `test_utils.py` | Multi-format date parsing, garbage input handling |
+
+CI runs automatically on every push via GitHub Actions (lint + test with coverage gate).
+
+---
+
+## CLI
+
+```bash
+# View receipt processing stats
+python manage.py receiptstats
+
+# Filter by status
+python manage.py receiptstats --status FLAGGED
+
+# Limit to last 7 days
+python manage.py receiptstats --days 7
+```
 
 ---
 
@@ -87,6 +166,7 @@ Hit `http://localhost:8000/api/health/` — if you get `{"status": "ok"}` you're
 | POST | `/api/reports/{id}/approve/` | Approve it |
 | POST | `/api/reports/{id}/reject/` | Reject it |
 | POST | `/api/reports/{id}/flag/` | Flag for manual review |
+| GET | `/api/reports/pending/` | Get all pending reports |
 
 ### Receipts
 
@@ -105,11 +185,12 @@ Hit `http://localhost:8000/api/health/` — if you get `{"status": "ok"}` you're
 |-------|-------------|
 | API | Django 5, Django REST Framework |
 | AI Pipeline | LangGraph, LangChain |
-| LLM | Groq — Llama 4 (vision) + Llama 3 (fraud) |
+| LLM | Groq -- Llama 4 (vision) + Llama 3 (fraud) |
 | Background Jobs | Celery + Redis |
 | Database | PostgreSQL |
 | Container | Docker, Docker Compose |
 | Static Files | WhiteNoise |
+| CI | GitHub Actions (lint + test + coverage) |
 
 ---
 
@@ -118,17 +199,22 @@ Hit `http://localhost:8000/api/health/` — if you get `{"status": "ok"}` you're
 ```
 receipt-agent/
 ├── api/
-│   ├── models.py          — ExpenseReport and Receipt models
-│   ├── views.py           — REST endpoints
-│   ├── serializers.py     — request/response shapes
-│   ├── tasks.py           — Celery async tasks
-│   └── ai/
-│       ├── graph.py       — LangGraph workflow
-│       ├── nodes.py       — OCR, extract, validate, fraud nodes
-│       └── state.py       — shared pipeline state
-├── config/                — Django settings, Celery config
-├── docker-compose.yml     — local dev stack
-├── Dockerfile             — production container
+│   ├── models.py          -- ExpenseReport and Receipt models
+│   ├── views.py           -- REST endpoints
+│   ├── serializers.py     -- request/response shapes
+│   ├── tasks.py           -- Celery async tasks
+│   ├── ai/
+│   │   ├── graph.py       -- LangGraph workflow
+│   │   ├── nodes.py       -- extract, validate, fraud nodes
+│   │   └── state.py       -- shared pipeline state
+│   ├── management/
+│   │   └── commands/
+│   │       └── receiptstats.py  -- CLI reporting tool
+│   └── tests/             -- 8 test files, 80+ test cases
+├── config/                -- Django settings, Celery config
+├── .github/workflows/     -- CI pipeline
+├── docker-compose.yml     -- local dev stack
+├── Dockerfile             -- production container
 └── requirements.txt
 ```
 
@@ -146,6 +232,12 @@ receipt-agent/
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
+
+---
+
 ## License
 
-MIT — do whatever you want with it.
+MIT -- do whatever you want with it.

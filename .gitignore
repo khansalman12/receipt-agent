@@ -31,4 +31,15 @@ staticfiles/
 # Secrets
 *.pem
 *.key
-TRANSFORMER_LESSON_1_TOKENIZATION_EMBEDDINGS.py
+
+# Claude Code
+.claude/
+
+# Postman local state
+.postman/
+
+# Pytest cache
+.pytest_cache/
+
+# SQLite (test runner)
+*.sqlite3
