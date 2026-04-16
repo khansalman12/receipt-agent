@@ -37,6 +37,7 @@ staticfiles/
 
 # Postman local state
 .postman/
+postman/
 
 # Pytest cache
 .pytest_cache/
