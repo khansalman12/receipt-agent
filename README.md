@@ -234,4 +234,4 @@ receipt-agent/
 
 ## License
 
-MIT -- do whatever you want with it.
+MIT -- License.
